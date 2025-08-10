@@ -213,8 +213,8 @@ def single_periodic_cal(full_code,df_X,start,end,freq,workday_list,period:int,me
     
 
 if __name__=="__main__":
-    start=dt.datetime(2020,1,3)
-    end=dt.datetime(2020,12,30)
+    start=dt.datetime(2021,1,3)
+    end=dt.datetime(2021,12,30)
     freq="12h"
     df_index,workday_list,_=get_complete_return(full_code="SH000300",start=start,end=end,freq=freq,workday_list=None,is_index=True)
     # print(workday_list)
@@ -225,7 +225,7 @@ if __name__=="__main__":
     # for period in ["full","10"]:
     period="20"
     # for full_code in [""]
-    full_code="SH603392"
+    full_code="SH600905"
     print(full_code)
     # results=single_periodic_cal(full_code=full_code,df_index=df_index,df_industry=df_industry,start=start,end=end,freq=freq,workday_list=workday_list,period=period,method=method)
     # results.to_csv(f'test_results_{period}_{method}.csv')

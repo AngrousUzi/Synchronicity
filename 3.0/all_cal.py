@@ -30,6 +30,8 @@ def prerequisite(index_code,start,end,freq):
         df_industry,_,error_list=get_complete_return(full_code=industry_code,start=start,end=end,freq=freq,workday_list=workday_list,is_index=True)
 
         df_constant=pd.concat([df_constant,df_industry.rename(industry_code)],axis=1)
+
+    df_constant.to_csv("df_constant.csv")
     if df_constant.isnull().any().any():
         raise ValueError("df_constant has null values.")
     composites=get_composites(index_code)
@@ -71,7 +73,7 @@ def all_cal(index_code,df_constant,X_cols,composites,start,end,freq,workday_list
             df_r2.to_csv(f"temp/r2/{full_code}.csv")
 
         processing_count+=1
-        # if processing_count%10==5: 
+        # if processing_count%10=z=5: 
         print(full_code,processing_count)
             # break
     summed_df = sum_df(final_r2_result)
@@ -116,8 +118,10 @@ if __name__=="__main__":
     end=dt.datetime(2024,1,15)
     freq="5min"
     df_constant,composites,workday_list=prerequisite(index_code="SH000300",start=start,end=end,freq=freq)
+    df_constant.to_csv("df_constant.csv")
     # print(composites)
     X_cols=["index"]
+    
 #%%
     results=all_cal(index_code="SH000300",df_constant=df_constant,X_cols=X_cols,composites=composites,start=start,end=end,freq=freq,workday_list=workday_list,period="1",method="simple")
     results.to_csv('test_results_all.csv')

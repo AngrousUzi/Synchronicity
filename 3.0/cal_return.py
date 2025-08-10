@@ -46,14 +46,20 @@ def cal_return(df,full_code) -> pd.Series:
 
     df_return = df_return[~(df_return.index.time == pd.Timestamp("09:15:00").time())]
     
-    null_index=df_return[df_return.isna()].index
-    if len(null_index)>0:
-        print(f"{full_code} with {len(null_index)} null index: {null_index}")
-        # print(df_return.loc[null_index])
+
+    # 对于如果有null值的index，删除当天所有的数据
+    # 修复bug：原代码试图用 difference 删除非空日期，但 drop 期望 index label，导致报错
+    # 正确做法：删除所有含有NaN的日期（即这些日期的所有数据），而不是用 difference
+    null_dates = df_return[df_return.isna()].index.normalize().unique()
+    if len(null_dates) > 0:
+        print(f"{full_code} with {len(null_dates)} null date(s): {list(null_dates.date)}")
+        os.makedirs(f'error_list/return', exist_ok=True)
         with open(f'error_list/return/{full_code}.txt', 'a', encoding='utf-8') as f:
-            for index in null_index:
-                f.write(f'{index}\n')
-    df_return=df_return.dropna()
+            for date in null_dates:
+                f.write(f'{date.date()}\n')
+        # 删除这些日期的所有数据
+        mask = ~df_return.index.normalize().isin(null_dates)
+        df_return = df_return[mask]
     return df_return
 
 def get_complete_return(full_code:str,start:dt.datetime,end:dt.datetime,freq:str,workday_list:list=None,is_index:bool=False):
@@ -81,12 +87,12 @@ def get_complete_return(full_code:str,start:dt.datetime,end:dt.datetime,freq:str
 
 
 if __name__=="__main__":
-    start=dt.datetime(2020,1,24)
-    end=dt.datetime(2020,10,10)
+    start=dt.datetime(2021,1,24)
+    end=dt.datetime(2021,10,10)
     freq="12h"
     df_index_return,workday_list,error_list=get_complete_return(full_code="SH000001",start=start,end=end,freq=freq,workday_list=None,is_index=True)
     df_index_return.to_csv("index_return_test.csv")
-    df_return,workday_list,error_list=get_complete_return(full_code="SH600000",start=start,end=end,freq=freq,workday_list=workday_list,is_index=False)
+    df_return,workday_list,error_list=get_complete_return(full_code="SH600905",start=start,end=end,freq=freq,workday_list=workday_list,is_index=False)
     # df_return.to_csv("return_test.csv")
     print(error_list)
     df_return.to_csv("return_test.csv")
