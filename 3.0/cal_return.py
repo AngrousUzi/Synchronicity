@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from get_data import get_data
 from resample import resample
 import datetime as dt
@@ -50,17 +51,22 @@ def cal_return(df,full_code) -> pd.Series:
     # 对于如果有null值的index，删除当天所有的数据
     # 修复bug：原代码试图用 difference 删除非空日期，但 drop 期望 index label，导致报错
     # 正确做法：删除所有含有NaN的日期（即这些日期的所有数据），而不是用 difference
-    null_dates = df_return[df_return.isna()].index.normalize().unique()
+
+    return df_return
+
+
+def check_null(df,full_code):
+    null_dates = df[df.isna()].index.normalize().unique()
     if len(null_dates) > 0:
         print(f"{full_code} with {len(null_dates)} null date(s): {list(null_dates.date)}")
         os.makedirs(f'error_list/return', exist_ok=True)
         with open(f'error_list/return/{full_code}.txt', 'a', encoding='utf-8') as f:
             for date in null_dates:
                 f.write(f'{date.date()}\n')
-        # 删除这些日期的所有数据
-        mask = ~df_return.index.normalize().isin(null_dates)
-        df_return = df_return[mask]
-    return df_return
+                # 删除这些日期的所有数据
+        mask = ~df.index.normalize().isin(null_dates)
+        df = df[mask]
+    return df
 
 def get_complete_return(full_code:str,start:dt.datetime,end:dt.datetime,freq:str,workday_list:list=None,is_index:bool=False):
     exg=full_code[:2]
@@ -82,17 +88,56 @@ def get_complete_return(full_code:str,start:dt.datetime,end:dt.datetime,freq:str
 
     # 删除第一天
     df_return=df_return.loc[df_return.index.date>=start.date()]
+
+    if is_index:
+        df_return=index_check_overnight(df_return,full_code)
+
+    df_return=check_null(df_return,full_code)
+
     # workday_list = [day for day in workday_list if day >= start.date()]
     return df_return,workday_list,error_list
 
+def index_check_overnight(df,full_code):
+    # 获取每日的第一个数据点
+    first_of_day = df.groupby(df.index.date).head(1)
+    
+    # 检查哪些点的隔夜收益率缺失（近似为0）
+    missing_overnight_mask = np.abs(first_of_day) < 0.00001
+    
+    # 获取需要更新的行的完整时间戳索引
+    indices_to_update = first_of_day[missing_overnight_mask].index
+
+    # 如果没有需要更新的行，直接返回
+    if indices_to_update.empty:
+        return df
+    os.makedirs("error_list//overnight",exist_ok=True)
+    with open(f"error_list//overnight/{full_code}.txt",'a',encoding='utf-8') as f:
+        for date in indices_to_update:
+            f.write(f"{date.date()}\n")
+    print(f"For {full_code}, overnight return from {indices_to_update[0].date()} to {indices_to_update[-1].date()} need to be replaced.")
+    # 加载预先计算好的隔夜收益率数据
+    return_overnight_code="H"+full_code[3:]
+    df_overnight_recal=pd.read_csv(f"index\\return\\{return_overnight_code}.csv")
+    df_overnight_recal=df_overnight_recal.set_index("date")
+    df_overnight_recal.index=pd.to_datetime(df_overnight_recal.index)
+    df_overnight_recal.index=df_overnight_recal.index+pd.Timedelta(hours=9)+pd.Timedelta(minutes=25)
+    
+    # 使用精确的时间戳索引来获取替换值
+    # 为了安全起见，我们只选择df_overnight_recal中与indices_to_update匹配的索引
+    valid_indices = indices_to_update.intersection(df_overnight_recal.index)
+    replacement_values = df_overnight_recal.loc[valid_indices, 'overnight_return']
+    # print(valid_indices)
+    # 更新原始的收益率序列
+    df.loc[valid_indices] = replacement_values
+    return df
 
 if __name__=="__main__":
-    start=dt.datetime(2021,1,24)
-    end=dt.datetime(2021,10,10)
+    start=dt.datetime(2019,1,24)
+    end=dt.datetime(2025,6,10)
     freq="12h"
-    df_index_return,workday_list,error_list=get_complete_return(full_code="SH000001",start=start,end=end,freq=freq,workday_list=None,is_index=True)
+    df_index_return,workday_list,error_list=get_complete_return(full_code="SH000300",start=start,end=end,freq=freq,workday_list=None,is_index=True)
     df_index_return.to_csv("index_return_test.csv")
-    df_return,workday_list,error_list=get_complete_return(full_code="SH600905",start=start,end=end,freq=freq,workday_list=workday_list,is_index=False)
+    df_return,workday_list,error_list=get_complete_return(full_code="SH000300",start=start,end=end,freq=freq,workday_list=workday_list,is_index=False)
     # df_return.to_csv("return_test.csv")
     print(error_list)
     df_return.to_csv("return_test.csv")

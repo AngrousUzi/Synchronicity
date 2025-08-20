@@ -114,17 +114,24 @@ def continue_cal(index_code,df_constant,X_cols,composites,start,end,freq,workday
     return sum_df(results_dict)     
 
 if __name__=="__main__":
-    start=dt.datetime(2024,1,1)
-    end=dt.datetime(2024,1,15)
-    freq="5min"
+    
+    start=dt.datetime(2025,1,2)
+    end=dt.datetime(2025,1,4)
+    freq="12h"
+    period="full"
+    method="simple"
+    X_cols=["index"]
+
+    print(f"start: {start.date()}, end: {end.date()}, freq: {freq}, period: {period}, method: {method}, X_cols: {X_cols}")
     df_constant,composites,workday_list=prerequisite(index_code="SH000300",start=start,end=end,freq=freq)
     df_constant.to_csv("df_constant.csv")
     # print(composites)
-    X_cols=["index"]
+
     
 #%%
-    results=all_cal(index_code="SH000300",df_constant=df_constant,X_cols=X_cols,composites=composites,start=start,end=end,freq=freq,workday_list=workday_list,period="1",method="simple")
+    results=all_cal(index_code="SH000300",df_constant=df_constant,X_cols=X_cols,composites=composites,start=start,end=end,freq=freq,workday_list=workday_list,period=period,method=method)
     results.to_csv('test_results_all.csv')
-
-    # results=continue_cal(index_code="SH000300",df_constant=df_constant,composites=composites,start=start,end=end,freq=freq,workday_list=workday_list,period="10",method="simple",continue_code="SZ002252")
-    # results.to_csv('test_results_continue.csv')
+    print("all_cal done")
+    results=continue_cal(index_code="SH000300",df_constant=df_constant,composites=composites,start=start,end=end,freq=freq,workday_list=workday_list,period=period,method=method,continue_code="SH600570")
+    results.to_csv('test_results_continue.csv')
+    print("continue_cal done")

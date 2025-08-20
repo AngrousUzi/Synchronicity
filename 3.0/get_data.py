@@ -25,7 +25,7 @@ def get_data(start:dt.datetime=None,end:dt.datetime=None,exg:str=None,full_code:
             month=str(date).split('-')[1]
             day=str(date).split('-')[2].split(' ')[0]
 
-            path=f'E:\\{year}\\ws{year+month+day}fb\\{exg}\\{full_code}.csv'
+            path=f'data/{year}/ws{year+month+day}fb/{exg}/{full_code}.csv'
             # print(path)
 
             try:
@@ -43,7 +43,7 @@ def get_data(start:dt.datetime=None,end:dt.datetime=None,exg:str=None,full_code:
             year=str(date).split("-")[0]
             month=str(date).split('-')[1]
             day=str(date).split('-')[2].split(' ')[0]
-            path=f'E:\\{year}\\ws{year+month+day}fb\\{exg}\\{full_code}.csv'
+            path=f'data/{year}/ws{year+month+day}fb/{exg}/{full_code}.csv'
             try:
                 df_tmp=pd.read_csv(path)
                 df_stock=pd.concat([df_stock,df_tmp])
@@ -68,6 +68,8 @@ def get_data(start:dt.datetime=None,end:dt.datetime=None,exg:str=None,full_code:
     df_stock=df_stock[['Price']]
 
     return df_stock,workday_list,error_list
+
+
 
 if __name__=="__main__":
     df=get_data(start=dt.datetime(2024,1,1),end=dt.datetime(2024,12,31),exg="SH",full_code="SH000001")
