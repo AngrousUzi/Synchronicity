@@ -3,7 +3,29 @@ import numpy as np
 import datetime as dt
 
 
-def resample(df,freq,is_index,stock_code,workday_list,error_list,**kwargs):
+def convert_freq_to_day(str):
+    if str.endswith("d"):
+        return int(str[:-1])
+    elif str.endswith("w"):
+        return int(str[:-1])*5
+    else:
+        raise ValueError(f"Unsupported freq: {str}")
+
+
+def resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list):
+    
+    #这两行主要是为了确保停牌的时候采集到的是历史中最近的一个交易日的数据
+    df=df.resample('D').last()
+    df=df.ffill()
+
+    df_resampled = pd.DataFrame(index=workday_list[::convert_freq_to_day(freq)])
+    df_resampled['Price'] = df.loc[df.index.isin(df_resampled.index)]['Price']
+    df_resampled=df_resampled.ffill()
+    df_resampled.index=pd.to_datetime(df_resampled.index)
+    return df_resampled
+
+
+def resample(df,freq,is_index,stock_code,workday_list,error_list):
     """
     股票高频数据重采样函数
     
@@ -18,6 +40,13 @@ def resample(df,freq,is_index,stock_code,workday_list,error_list,**kwargs):
     pd.DataFrame: 重采样后的DataFrame
     """
 
+    if freq.endswith("min") or freq.endswith("h"):
+        return resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list)
+    else:
+        return resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list)
+
+def resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list):
+    pass
     df_stock = df.copy()
     # df_stock[freq] = df_stock.index.time
 
@@ -104,8 +133,11 @@ def resample(df,freq,is_index,stock_code,workday_list,error_list,**kwargs):
 
 
     return df_resampled
+    
 if __name__=="__main__":    
     from get_data import get_data
+    import os
+    os.makedirs('test',exist_ok=True)
     df_all=get_data(start=dt.datetime(2020,2,24),end=dt.datetime(2020,6,10),exg="SH",full_code="SH603392")
     df_r=resample(df_all[0],freq="12h",is_index=False,stock_code="603392",workday_list=df_all[1],error_list=df_all[2])
-    df_r.to_csv('resample_test.csv')
+    df_r.to_csv(os.path.join("test","resample_test.csv"))

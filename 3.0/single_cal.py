@@ -11,9 +11,12 @@ from cal_return import get_complete_return
 
 import os
 
-def log_error(msg,full_code):
-    with open(f'error_list/{full_code}.txt', 'a', encoding='utf-8') as f:
-        f.write(msg + '\n')
+def log_error(msg, full_code, base_dir: str = ""):
+    """Append error message to unified log file base_dir/error/full_code.txt"""
+    error_dir = os.path.join(base_dir, 'error')
+    os.makedirs(error_dir, exist_ok=True)
+    with open(os.path.join(error_dir, f'{full_code}.txt'), 'a', encoding='utf-8') as f:
+        f.write("single_cal: "+str(msg) + '\n')
 
 def parse_timedelta(time_str):
     """
@@ -82,7 +85,7 @@ def convert_freq_to_min(str):
     else:
         raise ValueError(f"Unsupported freq: {str}")
 
-def simple_cal(df_stock,df_X,full_code):
+def simple_cal(df_stock,df_X,full_code, base_dir: str = ""):
     # 无法回归
     # df_index=df_X.iloc[:,0]
     if df_X.shape[0] <= 1 or df_stock.shape[0]<=1:
@@ -95,20 +98,20 @@ def simple_cal(df_stock,df_X,full_code):
     # print(df_X.index)
 
     if df_stock.shape[0]<df_X.shape[0]:
-        log_error(f'{full_code} 数据长度不一致,start:{df_X.index[0]},end:{df_X.index[-1]}',full_code)
-        log_error(f'stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}',full_code)
+        log_error(f'{full_code} 数据长度不一致,start:{df_X.index[0]},end:{df_X.index[-1]}',full_code, base_dir=base_dir)
+        log_error(f'stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}',full_code, base_dir=base_dir)
         missing_set=set(df_X.index.values)-set(df_stock.index.values)
         # if len(missing_set)<3:
-        log_error(f'缺少的index为{missing_set}',full_code)
+        log_error(f'缺少的index为{missing_set}',full_code, base_dir=base_dir)
         # df_stock.to_csv(f'error_list/return/{full_code}.csv')
 
         df_X=df_X.loc[df_stock.index].copy()
         # df_industry=df_industry.loc[df_stock.index].copy() 
     elif df_stock.shape[0]>df_X.shape[0]:
-        log_error(f'{full_code} 数据长度不一致,stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}',full_code)
+        log_error(f'{full_code} 数据长度不一致,stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}',full_code, base_dir=base_dir)
         missing_set=set(df_X.index.values)-set(df_stock.index.values)
         # if len(missing_set)<3:
-        log_error(f'缺少的index为{missing_set}',full_code)
+        log_error(f'缺少的index为{missing_set}',full_code, base_dir=base_dir)
         df_X=df_X.loc[df_stock.index].copy()
         # df_industry=df_industry.loc[df_stock.index].copy()
 
@@ -131,7 +134,7 @@ def simple_cal(df_stock,df_X,full_code):
     # print(r2,params)
     return {"r2":r2,"betas":params[1:]}
 
-def simple_cross_section_cal(df_stock,df_X,full_code,total_num):
+def simple_cross_section_cal(df_stock,df_X,full_code,total_num, base_dir: str = ""):
     r2s=pd.Series()
 
     X_cols=df_X.columns
@@ -146,7 +149,7 @@ def simple_cross_section_cal(df_stock,df_X,full_code,total_num):
         df_X_nth= df_X.groupby(df_X.index.date).nth(nth)
         # df_stock_period.to_csv(f'temp/{period_start.date()}_{period_end.date()}.csv')
         
-        simple_cal_result=simple_cal(df_stock_nth,df_X_nth,full_code)
+        simple_cal_result=simple_cal(df_stock_nth,df_X_nth,full_code, base_dir=base_dir)
         # print(simple_cal_result)
         r2s[nth]=simple_cal_result["r2"]
         for col in X_cols:
@@ -154,20 +157,33 @@ def simple_cross_section_cal(df_stock,df_X,full_code,total_num):
     # r2s,beta_indexs,beta_industrys=simple_cal(full_code,df_index,df_industry,start,end,freq,workday_list,period,method="cross_section")
     return {"r2":r2s,"betas":betas_dict}
 
-def single_periodic_cal(full_code,df_X,start,end,freq,workday_list,period:int,method):
+def single_periodic_cal(full_code,df_X,workday_list,params=None):
     ''''
         如果method=="
 
     '''
+    if params is None:
+        raise ValueError("params is None")
+    X_cols=params["X_cols"]
+    start=params["start"]
+    end=params["end"]
+    freq=params["freq"]
+    period=params["period"]
+    method=params["method"]
+    base_dir=params["base_dir"]
+
     X_cols=df_X.columns
 
-    df_stock,_,error_list=get_complete_return(full_code,start,end,freq,workday_list,False)
+    df_stock,_,error_list=get_complete_return(full_code,workday_list,False, params=params)
     # df_stock.to_csv('temp_stock.csv')
     if df_stock is None:
         return None
- 
+    os.makedirs(os.path.join(base_dir, 'temp', "returns"), exist_ok=True)
+    df_stock.to_csv(os.path.join(base_dir, 'temp', "returns", f'{full_code}_returns.csv'))
+
+    workday_list=[date for date in workday_list if date>=start.date()]
     if period=="full":
-        period=len(workday_list)-1
+        period=max(len(workday_list)-1,1)
     else:
         period=int(period)
     # print(period)
@@ -183,7 +199,7 @@ def single_periodic_cal(full_code,df_X,start,end,freq,workday_list,period:int,me
     r2s_all=pd.DataFrame(columns=range(total_num))
     betas_dict={col:pd.DataFrame(columns=range(total_num)) for col in X_cols}
     
-    workday_list=[date for date in workday_list if date>=start.date()]
+    # print(workday_list[::period],workday_list[period::period])
     for period_start,period_end in zip(workday_list[::period],workday_list[period::period]):
         # print(period_start,period_end)
         # print(df_X)
@@ -199,12 +215,12 @@ def single_periodic_cal(full_code,df_X,start,end,freq,workday_list,period:int,me
         
         # df_stock_period.to_csv(f'temp/{period_start.date()}_{period_end.date()}.csv')
         if method=="simple":
-            cal_result=simple_cal(df_stock_period,df_X_period,full_code)
+            cal_result=simple_cal(df_stock_period,df_X_period,full_code, base_dir=base_dir)
             r2s_all.loc[period_start,0]=cal_result["r2"]
             for col in X_cols:
                 betas_dict[col].loc[period_start,0]=cal_result["betas"][col]
         elif method=="cross_section":
-            cal_result=simple_cross_section_cal(df_stock_period,df_X_period,full_code,total_num)
+            cal_result=simple_cross_section_cal(df_stock_period,df_X_period,full_code,total_num, base_dir=base_dir)
             r2s_all.loc[period_start]=cal_result["r2"]
             for col in X_cols:
                 betas_dict[col].loc[period_start]=cal_result["betas"][col]
@@ -241,6 +257,7 @@ if __name__=="__main__":
     df_X.columns=X_cols
 
     results=single_periodic_cal(full_code=full_code,df_X=df_X,start=start,end=end,freq=freq,workday_list=workday_list,period=period,method=method)
-    results["r2"].to_csv(f'test_results_{period}_{method}.csv')
-    results["betas"]["index"].to_csv(f'test_betas_index_{period}_{method}.csv')
+    os.makedirs("test",exist_ok=True)
+    results["r2"].to_csv(os.path.join("test",f'test_results_{period}_{method}.csv'))
+    results["betas"]["index"].to_csv(os.path.join("test",f'test_betas_index_{period}_{method}.csv'))
     # results["betas"]["industry"].to_csv(f'test_betas_industry_{period}_{method}.csv')
