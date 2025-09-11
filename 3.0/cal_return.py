@@ -89,36 +89,44 @@ def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False
     end=params["end"]
     freq=params["freq"]
     base_dir=params["base_dir"]
+
+    error_list = []
+
     # 先在start.date()_end.date()/freq/中找
     date_str = f"{start.date()}_{end.date()}"
     search_dir = os.path.join(date_str, freq)
     file_path = os.path.join(search_dir, f"{full_code}.csv")
-
+    # print(f"Search complete return of {full_code} in {file_path}")
     if os.path.exists(file_path):
-        df_return = pd.read_csv(file_path, index_col=0, parse_dates=True, squeeze=True)
+        df_return = pd.read_csv(file_path, index_col=0, parse_dates=True).squeeze()
         # 重新获取workday_list和error_list
-        if workday_list is None or error_list is None:
-            # 尝试读取txt文件
-            txt_path = os.path.join(base_dir, date_str, "agg_raw", f"{full_code}.txt")
-            if os.path.exists(txt_path):
-                with open(txt_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                workday_list = None
-                error_list = None
-                for line in lines:
-                    if line.startswith("workday_list:"):
-                        try:
-                            workday_list = eval(line.split(":", 1)[1].strip())
-                        except Exception:
-                            workday_list = None
-                    if line.startswith("error_list:"):
-                        try:
-                            error_list = eval(line.split(":", 1)[1].strip())
-                        except Exception:
-                            error_list = None
+        txt_path = os.path.join(date_str, "agg_raw", f"{full_code}.txt")
+        if os.path.exists(txt_path):
+            with open(txt_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            workday_list = []
+            error_list = []
+            for line in lines:
+                if line.startswith("workday_list:"):
+                    try:
+                        # 为eval提供datetime命名空间
+                        import datetime
+                        workday_list = eval(line.split(":", 1)[1].strip(), {"__builtins__": {}, "datetime": datetime, "dt": dt})
+                    except Exception:
+                        workday_list = []
+                if line.startswith("error_list:"):
+                    try:
+                        # 为eval提供datetime命名空间
+                        import datetime
+                        error_list = eval(line.split(":", 1)[1].strip(), {"__builtins__": {}, "datetime": datetime, "dt": dt})
+                    except Exception:
+                        error_list = []
+        print(f"Get complete return of {full_code} from {file_path}")
+        # print(f"Workday list: {workday_list}")
+        # print(f"Error list: {error_list}")
         return df_return, workday_list, error_list
 
-
+    print(f"No complete return of {full_code} found in {file_path}, recompute")
     # 如果找不到，则重新计算
     exg=full_code[:2]
     num_code=full_code[2:]

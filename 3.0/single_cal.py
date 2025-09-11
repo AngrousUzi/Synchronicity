@@ -178,8 +178,9 @@ def single_periodic_cal(full_code,df_X,workday_list,params=None):
     # df_stock.to_csv('temp_stock.csv')
     if df_stock is None:
         return None
-    os.makedirs(os.path.join(base_dir, 'temp', "returns"), exist_ok=True)
-    df_stock.to_csv(os.path.join(base_dir, 'temp', "returns", f'{full_code}_returns.csv'))
+
+    # os.makedirs(os.path.join(base_dir, 'temp', "returns"), exist_ok=True)
+    # df_stock.to_csv(os.path.join(base_dir, 'temp', "returns", f'{full_code}_returns.csv'))
 
     workday_list=[date for date in workday_list if date>=start.date()]
     if period=="full":

@@ -39,7 +39,7 @@ def run_single_calculation(full_code, index_code, composites, df_constant, workd
         print(f"No data for {full_code}")
         error_dir = os.path.join(base_dir, 'error')
 
-        with open(os.path.join(error_dir, f'{full_code}.txt'), 'a', encoding='utf-8') as f:
+        with open(os.path.join(error_dir, f'{full_code}.txt'), 'a+', encoding='utf-8') as f:
             f.write('all_cal: No data for this code.\n')
         return full_code, None
     
@@ -53,7 +53,7 @@ def run_single_calculation(full_code, index_code, composites, df_constant, workd
         df_r2.to_csv(os.path.join(r2_dir, f"{full_code}.csv"))
     else:
         error_dir = os.path.join(base_dir, 'error')
-        with open(os.path.join(error_dir, f'{full_code}.txt'), 'a', encoding='utf-8') as f:
+        with open(os.path.join(error_dir, f'{full_code}.txt'), 'a+', encoding='utf-8') as f:
             f.write('all_cal: No r2 data for this code.\n')
     if betas_dict is not None:
         for key,value in betas_dict.items():
@@ -63,7 +63,7 @@ def run_single_calculation(full_code, index_code, composites, df_constant, workd
                 value.to_csv(os.path.join(beta_dir, f"{full_code}.csv"))
             else:
                 error_dir = os.path.join(base_dir, 'error')
-                with open(os.path.join(error_dir, f'{full_code}.txt'), 'a', encoding='utf-8') as f:
+                with open(os.path.join(error_dir, f'{full_code}.txt'), 'a+', encoding='utf-8') as f:
                     f.write('all_cal: No betas data for this code.\n')
 
     return full_code, {"r2": df_r2, "betas": betas_dict}
@@ -113,12 +113,6 @@ def prerequisite(index_code,params):
 
 def all_cal(index_code,df_constant,composites,workday_list,cpu_parallel_num=None, params=None):
     
-    if method=="cross_section" :
-        if not freq.endswith("min") and not freq.endswith("h"):
-            raise ValueError("Cross-section method is only supported for minute or hour frequency.")
-        if (period=="1" or period=="2"):
-            warnings.warn(f"Cross-section method may result in all NaN or 1 for period={period}", RuntimeWarning)
-
     
     if params is None:
         raise ValueError("params is None")
@@ -129,7 +123,12 @@ def all_cal(index_code,df_constant,composites,workday_list,cpu_parallel_num=None
     period=params["period"]
     method=params["method"]
     base_dir=params["base_dir"]
-    
+
+    if method=="cross_section" :
+        if not freq.endswith("min") and not freq.endswith("h"):
+            raise ValueError("Cross-section method is only supported for minute or hour frequency.")
+        if (period=="1" or period=="2"):
+            warnings.warn(f"Cross-section method may result in all NaN or 1 for period={period}", RuntimeWarning)
 
 
     composite_list=composites['full_code'].tolist()
@@ -139,7 +138,7 @@ def all_cal(index_code,df_constant,composites,workday_list,cpu_parallel_num=None
         beta_dir = os.path.join(base_dir, "temp", "betas", col)
         if not os.path.exists(beta_dir):
             os.makedirs(beta_dir)
-
+            
     if cpu_parallel_num is None:
         results=[]
         for full_code in composite_list:
@@ -232,7 +231,7 @@ if __name__=="__main__":
     parser.add_argument('--start', type=str, default='2010-01-05', help='Start date in YYYY-MM-DD format')
     parser.add_argument('--end', type=str, default='2025-06-30', help='End date in YYYY-MM-DD format')
     parser.add_argument('--freq', type=str, default='12h', help='Frequency for calculation')
-    parser.add_argument('--period', type=str, default='30', help='Period for calculation')
+    parser.add_argument('--period', type=str, default='1', help='Period for calculation')
     parser.add_argument('--method', type=str, default='simple', help='Method for calculation (simple or cross_section)')
     parser.add_argument('--X_cols', nargs='+', default=['index'], help='List of columns for X')
     parser.add_argument('--index_code', type=str, default='SH000300', help='Index code')
@@ -258,6 +257,11 @@ if __name__=="__main__":
     param_dir = f"{index_code}_{date_str}_{freq}_{period}_{method}_{x_str}"
     base_dir = os.path.join("result", param_dir)
     os.makedirs(base_dir, exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "error"), exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "temp"), exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "temp", "r2"), exist_ok=True)
+    for col in X_cols:
+        os.makedirs(os.path.join(base_dir, "temp", "betas", col), exist_ok=True)
 
     params={"start":start,"end":end,"freq":freq,"period":period,"method":method,"X_cols":X_cols,"base_dir":base_dir}
 
