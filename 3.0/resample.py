@@ -107,8 +107,8 @@ def resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list):
                                    (df_continuous.index.time < pd.to_datetime("14:59:59").time()))]
     
     # 丢弃每一天最后一个df_continuous,用close替代
-    # last_idx_per_day = df_continuous.groupby(df_continuous.index.date).tail(1).index
-    # df_continuous = df_continuous.drop(last_idx_per_day)
+    last_idx_per_day = df_continuous.groupby(df_continuous.index.date).tail(1).index
+    df_continuous = df_continuous.drop(last_idx_per_day)
     # 合并所有时段的数据
     df_resampled = pd.concat([df_first,df_open,df_continuous,df_close])
     df_resampled.sort_index(inplace=True)
@@ -138,6 +138,6 @@ if __name__=="__main__":
     from get_data import get_data
     import os
     os.makedirs('test',exist_ok=True)
-    df_all=get_data(start=dt.datetime(2024,2,24),end=dt.datetime(2024,6,10),exg="SH",full_code="SH603392")
-    df_r=resample(df_all[0],freq="5min",is_index=False,stock_code="603392",workday_list=df_all[1],error_list=df_all[2])
+    df_all=get_data(start=dt.datetime(2020,2,24),end=dt.datetime(2020,6,10),exg="SH",full_code="SH603392")
+    df_r=resample(df_all[0],freq="12h",is_index=False,stock_code="603392",workday_list=df_all[1],error_list=df_all[2])
     df_r.to_csv(os.path.join("test","resample_test.csv"))
