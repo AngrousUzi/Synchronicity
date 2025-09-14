@@ -11,18 +11,39 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 def cal_return(df,full_code) -> pd.Series:
     """
-    计算股票收益率函数
+    计算股票或指数收益率函数
     
-    计算DataFrame按照指定频率重采样后的收益率，并删除隔夜收益率部分
-    因为使用的是不复权数据，隔夜收益率无法准确计算
+    从重采样后的价格数据计算百分比收益率，自动排除分红除权收益率（09:15时点）。
+
     
     参数:
-    df (pd.DataFrame): 需要重采样的DataFrame，包含价格数据
-    t_range: 数据中符合要求的时间范围
-    freq (str): 重采样频率
+    df (pd.DataFrame): 重采样后的价格数据，必须包含以下特征：
+                       - index: pd.DatetimeIndex，包含交易时间戳
+                       - columns: ['Price']，调整后的价格数据
+                       - 数据应来自resample函数的输出
+    full_code (str): 完整股票或指数代码（如"SH000300"），用于调试和错误记录
     
     返回:
-    pd.Series: 计算得到的收益率序列
+    pd.Series: 收益率时间序列，具有以下特征：
+               - index: pd.DatetimeIndex，与输入数据对应但排除09:15时点
+               - values: float，百分比收益率 (当期价格/前期价格 - 1)
+               - 排除了隔夜收益率，仅包含日内交易时段的收益率
+               - 第一个观测值为NaN（无法计算前一期收益率）
+    
+    处理逻辑:
+    1. 使用pandas的pct_change()计算相邻时点的收益率
+    2. 自动排除09:15时点的数据（隔夜跳空，不复权数据不准确）
+    3. 保留所有其他时点：09:25集合竞价、日内连续交易、15:00收盘价
+    
+    注意事项:
+    - 输入数据假设已经过除权调整（对于个股）
+
+    - 返回的收益率可用于后续的回归分析和风险建模
+    
+    示例:
+    >>> # 假设df是5分钟重采样后的价格数据
+    >>> returns = cal_return(df, "SH000300")
+    >>> print(returns.index.time.unique())  # 不包含09:15:00
     """
     
     # 旧版本的计算逻辑（已注释掉）
@@ -57,6 +78,42 @@ def cal_return(df,full_code) -> pd.Series:
 
 
 def check_null(df,full_code, base_dir: str = ""):
+    """
+    检查并处理收益率数据中的空值
+    
+    识别包含NaN值的交易日期，记录问题并删除这些日期的所有数据。
+    这样可以避免单日内部分时点缺失导致的分析偏差。
+    
+    参数:
+    df (pd.Series): 收益率时间序列
+                    - index: pd.DatetimeIndex，包含交易时间戳
+                    - values: float，可能包含NaN的收益率数据
+    full_code (str): 完整的股票或指数代码（如"SH000300"）
+                     用于错误日志记录和调试输出
+    base_dir (str, optional): 基础目录路径，默认为空字符串
+                              错误日志将保存到 base_dir/error/{full_code}.txt
+    
+    返回:
+    pd.Series: 清洗后的收益率数据，具有以下特征：
+               - 删除了包含NaN值的完整交易日期
+               - 保持原有的时间索引结构
+               - 确保数据的完整性和分析的可靠性
+    
+    副作用:
+    - 在控制台输出包含空值的日期信息
+    - 在base_dir/error/{full_code}.txt中记录详细的空值日期
+    - 自动创建错误日志目录（如果不存在）
+    
+    处理逻辑:
+    1. 识别所有包含NaN值的日期（使用normalize()获取日期部分）
+    2. 记录问题日期到错误日志
+    3. 删除这些问题日期的所有时点数据
+    4. 返回清洗后的数据
+    
+    设计理念:
+    采用"全日删除"策略而非插值填充，确保分析结果的可靠性，
+    避免因部分时点缺失而造成的日内收益率结构扭曲。
+    """
     def _log(msg: str):
         error_dir = os.path.join(base_dir, 'error')
         os.makedirs(error_dir, exist_ok=True)
@@ -73,6 +130,47 @@ def check_null(df,full_code, base_dir: str = ""):
     return df
 
 def deal_return(df_return,full_code,start,end,is_index,base_dir: str = ""):
+    """
+    对原始收益率数据进行后处理和清洗
+    
+    针对指数和个股数据的不同特点，进行相应的数据清洗和质量控制。
+    特别处理指数数据中的隔夜收益率问题和所有数据的空值问题。
+    
+    参数:
+    df_return (pd.Series): 原始收益率数据，来自cal_return函数的输出
+                           - index: pd.DatetimeIndex，交易时间戳
+                           - values: float，收益率数据（可能包含NaN）
+    full_code (str): 完整的股票或指数代码（如"SH000300"）
+                     用于错误日志和特殊处理
+    start (datetime.datetime): 分析起始日期（当前未使用）
+    end (datetime.datetime): 分析结束日期（当前未使用）
+    is_index (bool): 数据类型标识
+                     - True: 指数数据，需要进行隔夜收益率检查
+                     - False: 个股数据，直接进行空值检查
+    base_dir (str, optional): 基础目录路径，默认为空字符串
+                              错误日志将保存到此目录下
+    
+    返回:
+    pd.Series: 清洗后的收益率数据，具有以下特征：
+               - 对于指数：隔夜收益率已经过修正（如需要）
+               - 对于所有数据：已删除包含NaN值的完整交易日
+               - 保持原有的时间索引结构
+               - 数据质量符合后续分析要求
+    
+    处理流程:
+    1. 如果是指数数据：调用index_check_overnight检查和修正隔夜收益率
+    2. 对所有数据：调用check_null删除包含空值的日期
+    3. 返回清洗后的数据供后续分析使用
+    
+    设计理念:
+    - 针对指数和个股的不同特性进行专门化处理
+    - 确保数据质量的同时保持处理流程的统一性
+    - 为后续的风险建模和回归分析提供清洁的数据
+    
+    注意事项:
+    - start和end参数在当前实现中未被使用
+    - 该函数主要针对高频数据（分钟级和小时级）
+    """
 
     if is_index:
         df_return=index_check_overnight(df_return,full_code, base_dir=base_dir)
@@ -82,25 +180,71 @@ def deal_return(df_return,full_code,start,end,is_index,base_dir: str = ""):
     # workday_list = [day for day in workday_list if day >= start.date()]
     return df_return
 
-def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False, params=None):
+def get_cache_return(full_code:str,workday_list:list=None,is_index:bool=False, params=None):
+    """
+    从缓存中获取已计算的收益率数据
+    
+    在指定目录中查找已存在的收益率数据文件，并加载相关的辅助信息。
+    用于加速重复计算，避免从原始数据重新处理。
+    
+    参数:
+    full_code (str): 完整的股票或指数代码（如"SH000300"）
+                     用于构建文件路径和缓存查找
+    workday_list (list, optional): 工作日列表（当前未使用）
+    is_index (bool, optional): 是否为指数数据（当前未使用）
+    params (dict): 参数字典，必须包含以下键值：
+                   - "start" (datetime): 开始日期
+                   - "end" (datetime): 结束日期  
+                   - "freq" (str): 频率参数
+                   - "base_dir" (str): 基础目录路径
+    
+    返回:
+    tuple: 三元组包含以下元素：
+           - df_return (pd.Series or None): 缓存的收益率数据
+             * 如果找到：pd.Series，index为DatetimeIndex，values为收益率
+             * 如果未找到：None
+           - workday_list (list): 工作日列表
+             * 如果成功加载：list[datetime.date]，从辅助文件读取
+             * 如果失败：空列表
+           - error_list (list): 错误日期列表
+             * 如果成功加载：list[datetime.date]，从辅助文件读取
+             * 如果失败：空列表
+    
+    文件结构:
+    - 主数据文件：{date_str}/{freq}/{full_code}.csv
+      * date_str = "start_date_end_date" 格式
+      * 存储pandas Series格式的收益率数据
+    - 辅助信息文件：{date_str}/{freq}/agg_raw/{full_code}.txt
+      * 包含workday_list和error_list的字符串表示
+      * 使用eval()解析，带有安全限制
+    
+    异常处理:
+    - 如果params为None，抛出ValueError
+    - 文件不存在时返回(None, [], [])
+    - 辅助文件解析失败时使用默认空列表
+    
+    使用场景:
+    - 大量批处理中的快速重启
+    - 避免重复计算已存在的收益率数据
+    - 调试和验证中间结果
+    
+    安全注意:
+    - eval()使用了受限的命名空间，仅允许datetime模块
+    - 不会执行危险的代码，但仍需谨慎对待输入文件
+    """
     if params is None:
         raise ValueError("params is None")
     start=params["start"]
     end=params["end"]
     freq=params["freq"]
     base_dir=params["base_dir"]
-
-    error_list = []
-
-    # 先在start.date()_end.date()/freq/中找
     date_str = f"{start.date()}_{end.date()}"
     search_dir = os.path.join(date_str, freq)
     file_path = os.path.join(search_dir, f"{full_code}.csv")
-    # print(f"Search complete return of {full_code} in {file_path}")
     if os.path.exists(file_path):
         df_return = pd.read_csv(file_path, index_col=0, parse_dates=True).squeeze()
         # 重新获取workday_list和error_list
-        txt_path = os.path.join(date_str, "agg_raw", f"{full_code}.txt")
+        txt_path = os.path.join(search_dir, "agg_raw", f"{full_code}.txt")
         if os.path.exists(txt_path):
             with open(txt_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
@@ -121,12 +265,79 @@ def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False
                         error_list = eval(line.split(":", 1)[1].strip(), {"__builtins__": {}, "datetime": datetime, "dt": dt})
                     except Exception:
                         error_list = []
-        print(f"Get complete return of {full_code} from {file_path}")
-        # print(f"Workday list: {workday_list}")
-        # print(f"Error list: {error_list}")
         return df_return, workday_list, error_list
+    return None, [], []
 
-    print(f"No complete return of {full_code} found in {file_path}, recompute")
+def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False, params=None):
+    """
+    获取完整的收益率数据（缓存优先的智能加载函数）
+    
+    该函数是获取收益率数据的主要入口点，首先尝试从缓存加载，
+    如果缓存不存在则从原始数据重新计算。支持高频和低频数据处理。
+    
+    参数:
+    full_code (str): 完整的股票或指数代码（如"SH000300"）
+                     用于识别交易所和数字代码
+    workday_list (list, optional): 工作日列表
+                                   如为None则在数据加载过程中自动生成
+    is_index (bool, optional): 数据类型标识，默认False
+                               - True: 指数数据，需要附加隔夜收益率检查
+                               - False: 个股数据，需要分红调整
+    params (dict): 参数字典，必须包含关键信息：
+                   - "start" (datetime): 分析起始日期
+                   - "end" (datetime): 分析结束日期
+                   - "freq" (str): 重采样频率
+                   - "base_dir" (str): 基础目录路径
+    
+    返回:
+    tuple: 三元组包含完整的数据和辅助信息：
+           - df_return (pd.Series or None): 收益率数据
+             * 成功时：pd.Series，经过清洗和质量控制
+             * 失败时：None（无法获取原始数据）
+           - workday_list (list): 实际使用的工作日列表
+             * list[datetime.date]，包含数据范围内的所有交易日
+           - error_list (list): 问题日期列表
+             * list[datetime.date]，数据缺失或有问题的日期
+    
+    处理流程:
+    1. **缓存检查**: 调用get_cache_return尝试加载已存在的数据
+    2. **原始数据加载**: 如缓存未命中，根据频率类型选择加载方式
+       - 高频数据：调用get_high_freq_data
+       - 低频数据：调用get_low_freq_data
+    3. **数据重采样**: 使用resample函数进行时间频率转换
+    4. **收益率计算**: 调用cal_return计算百分比收益率
+    5. **数据裁剪**: 删除起始日期之前的数据
+    6. **质量控制**: 对高频数据进行额外的清洗处理
+    
+    数据起始日期调整:
+    - 高频数据：提前4天加载，确保除权参考价可用
+    - 低频数据：按频率周期提前相应天数
+    
+    错误处理:
+    - 如果params为None，抛出ValueError
+    - 如果原始数据为None，返回(None, workday_list, error_list)
+    - 所有错误都会被记录到相应的错误日志中
+    
+    性能优化:
+    - 缓存机制显著减少重复计算时间
+    - 按需加载，避免不必要的数据处理
+    - 智能识别高频/低频，选择适合的加载策略
+    """
+    if params is None:
+        raise ValueError("params is None")
+    start=params["start"]
+    end=params["end"]
+    freq=params["freq"]
+    base_dir=params["base_dir"]
+
+    error_list = []
+
+    # 先在start.date()_end.date()/freq/中找
+    df_return, workday_list_temp, error_list_temp = get_cache_return(full_code,workday_list,is_index, params)
+    if df_return is not None:
+        return df_return, workday_list_temp, error_list_temp
+
+    print(f"No complete return of {full_code} found, recompute")
     # 如果找不到，则重新计算
     exg=full_code[:2]
     num_code=full_code[2:]
@@ -160,6 +371,59 @@ def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False
     return df_return,workday_list,error_list
 
 def index_check_overnight(df,full_code, base_dir: str = ""):
+    """
+    检查和修正指数数据中的隔夜收益率问题
+    
+    指数数据中，由于数据源问题，09:25时点的隔夜收益率可能缺失或近似零。
+    此函数识别这些问题并使用预先计算的准确隔夜收益率进行替换。
+    
+    参数:
+    df (pd.Series): 指数收益率数据，必须包含09:25时点的数据
+                    - index: pd.DatetimeIndex，包含交易日期和时间
+                    - values: float，收益率数据
+    full_code (str): 完整的指数代码（如"SH000300"）
+                     用于构建替换数据文件路径和日志记录
+    base_dir (str, optional): 基础目录路径，默认为空字符串
+                              错误日志将保存到 base_dir/error/{full_code}.txt
+    
+    返回:
+    pd.Series: 修正后的收益率数据，具有以下特征：
+               - 问题的隔夜收益率已被替换为准确值
+               - 保持原有的数据结构和时间索引
+               - 其他数据点保持不变
+    
+    处理逻辑:
+    1. **问题识别**: 检查每日首个数据点（通常为09:25）的收益率
+    2. **阈值判断**: 绝对值小于0.00001的认为是问题数据
+    3. **日志记录**: 记录所有问题日期到错误日志文件
+    4. **数据替换**: 从预计算文件加载准确的隔夜收益率
+    5. **精确匹配**: 仅替换时间戳完全匹配的数据点
+    
+    隔夜收益率数据源:
+    - 文件路径: index/return/H{num_code}.csv
+    - 数据结构: date列(日期)，overnight_return列(隔夜收益率)
+    - 时间戳调整: 自动调整为09:25时点以匹配目标数据
+    
+    副作用:
+    - 在控制台输出替换范围信息
+    - 在错误日志中记录每个问题日期
+    - 自动创建错误日志目录
+    
+    错误处理:
+    - 如果没有问题数据，直接返回原数据
+    - 如果替换数据文件不存在，会抛出FileNotFoundError
+    - 仅替换能够精确匹配时间戳的数据点
+    
+    应用场景:
+    - 仅适用于指数数据（is_index=True）
+    - 主要在日内高频分析中使用
+    - 确保隔夜跳空收益率的准确性
+    
+    注意事项:
+    - 需要预先准备index/return/目录下的隔夜收益率数据
+    - 代码转换规则：SH000300 -> H000300
+    - 时间精度要求较高，必须精确到分钟
+    """
     # 获取每日的第一个数据点
     first_of_day = df.groupby(df.index.date).head(1)
     

@@ -4,6 +4,31 @@ import datetime as dt
 
 
 def convert_freq_to_day(str):
+    """
+    将频率字符串转换为对应的天数
+    
+    将低频率的字符串表示（如"1d", "2w"）转换为对应的交易日天数。
+    主要用于低频数据重采样时计算采样间隔。
+    
+    参数:
+    str (str): 频率字符串，支持的格式：
+               - "Nd" 表示N天，如"1d"表示1天
+               - "Nw" 表示N周，如"2w"表示2周（转换为10个交易日）
+    
+    返回:
+    int: 对应的自然日天数
+         - 对于天数格式：直接返回天数
+         - 对于周数格式：周数乘以5（按交易日计算）
+    
+    异常:
+    ValueError: 当输入的频率字符串格式不受支持时抛出
+    
+    示例:
+    >>> convert_freq_to_day("1d")
+    1
+    >>> convert_freq_to_day("2w")
+    10
+    """
     if str.endswith("d"):
         return int(str[:-1])
     elif str.endswith("w"):
@@ -13,6 +38,31 @@ def convert_freq_to_day(str):
 
 
 def resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list):
+    """
+    低频数据重采样函数
+    
+    对股票或指数的日频或更低频率数据进行重采样。适用于日线、周线等低频数据处理。
+    处理停牌情况，通过前向填充确保连续性。
+    
+    参数:
+    df (pd.DataFrame): 原始价格数据，包含'Price'列，index为日期时间
+    freq (str): 重采样频率，如"1d"、"2w"等低频格式
+    is_index (bool): 是否为指数数据（当前版本中此参数对低频数据处理无影响）
+    stock_code (str): 股票代码，用于错误日志记录
+    workday_list (list): 工作日列表，包含datetime.date对象
+    error_list (list): 错误日期列表，包含有问题的日期
+    
+    返回:
+    pd.DataFrame: 重采样后的数据，包含以下特性：
+                  - index: pd.DatetimeIndex，按指定频率的日期
+                  - columns: ['Price']，包含重采样后的价格数据
+                  - 停牌期间使用前向填充的历史价格
+    
+    处理逻辑:
+    1. 先按日频重采样并前向填充，处理停牌情况
+    2. 根据指定频率从工作日列表中选择采样点
+    3. 对缺失数据进行前向填充
+    """
     
     #这两行主要是为了确保停牌的时候采集到的是历史中最近的一个交易日的数据
     df=df.resample('D').last()
@@ -27,17 +77,40 @@ def resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list):
 
 def resample(df,freq,is_index,stock_code,workday_list,error_list):
     """
-    股票高频数据重采样函数
+    股票和指数数据重采样主函数
     
-    将输入的DataFrame按照指定频率重采样，同时处理中国股市的特殊交易时段
-    包括早盘集合竞价、连续交易时段和收盘价
+    根据频率类型自动选择高频或低频重采样方法。处理中国股市的特殊交易时段，
+    包括早盘集合竞价、连续交易时段和收盘价，同时支持个股分红调整。
     
     参数:
-    df (pd.DataFrame): 需要重采样的DataFrame，以Time (format:datetime) 为index,Price列位
-    freq (str): "3min", "5min", "10min", "30min", "12h"（日内连续交易阶段收益）
+    df (pd.DataFrame): 需要重采样的原始数据
+                       - index: pd.DatetimeIndex，时间戳
+                       - columns: ['Price']，价格数据
+    freq (str): 重采样频率，支持以下格式：
+                - 高频："3min", "5min", "10min", "15min", "30min", "12h"
+                - 低频："1d", "2w" 等
+    is_index (bool): 是否为指数数据
+                     - True: 指数数据，无需分红调整
+                     - False: 个股数据，需要进行分红除权处理
+    stock_code (str): 股票数字代码（不含交易所前缀），用于：
+                      - 查找分红数据文件 dividend/{stock_code}.csv
+                      - 错误日志记录
+    workday_list (list): 工作日列表，包含datetime.date对象
+                         用于确定有效交易日期
+    error_list (list): 错误日期列表，包含有问题的日期
+                       这些日期的数据会被排除
     
     返回:
-    pd.DataFrame: 重采样后的DataFrame
+    pd.DataFrame: 重采样后的数据，具有以下特征：
+                  - index: pd.DatetimeIndex，按指定频率的时间点
+                  - columns: ['Price']，调整后的价格数据
+                  - 对于高频数据：包含开盘价、连续交易时段价格和收盘价
+                  - 对于个股：已进行分红除权调整
+                  - 缺失数据已进行前向填充
+    
+    处理逻辑:
+    - 高频数据（min/h结尾）：调用resample_high_freq处理日内数据
+    - 低频数据（d/w结尾）：调用resample_low_freq处理日线以上数据
     """
 
     if freq.endswith("min") or freq.endswith("h"):
@@ -46,7 +119,60 @@ def resample(df,freq,is_index,stock_code,workday_list,error_list):
         return resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list)
 
 def resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list):
-    pass
+    """
+    高频数据重采样函数
+    
+    处理分钟级和小时级的股票数据重采样，考虑中国股市的特殊交易时段结构。
+    对个股数据进行分红除权调整，确保价格数据的连续性和准确性。
+    
+    参数:
+    df (pd.DataFrame): 原始高频数据
+                       - index: pd.DatetimeIndex，精确到分钟或更细粒度的时间戳
+                       - columns: ['Price']，原始价格数据
+    freq (str): 高频重采样频率，支持：
+                - "3min", "5min", "10min", "15min", "30min": 分钟级频率
+                - "12h": 日内连续交易时段（相当于一个交易日的总体）
+    is_index (bool): 数据类型标识
+                     - True: 指数数据，使用原始价格作为除权参考价
+                     - False: 个股数据，需要进行分红除权价格调整
+    stock_code (str): 股票数字代码（如"000001"），用于：
+                      - 查找分红数据：dividend/{stock_code}.csv
+                      - 错误日志记录和调试
+    workday_list (list): 有效工作日列表，包含datetime.date对象
+                         用于过滤非交易日数据
+    error_list (list): 问题日期列表，包含数据质量有问题的日期
+                       这些日期的数据会被排除
+    
+    返回:
+    pd.DataFrame: 重采样后的高频数据，包含以下特征：
+                  - index: pd.DatetimeIndex，按以下时间点组织：
+                    * 09:15: 除权参考价（个股）或当日首价（指数）
+                    * 09:25: 集合竞价结果价格
+                    * 09:30-11:29, 13:00-14:59: 连续交易时段的重采样价格
+                    * 15:00: 收盘价
+                  - columns: ['Price']，经过以下处理的价格：
+                    * 个股：已进行分红除权调整
+                    * 指数：保持原始价格
+                    * 缺失数据进行前向填充
+                    * 异常值（<0.00001）设为NaN后前向填充
+    
+    处理逻辑:
+    1. 关键时点价格提取：
+       - 收盘价：每日最后一个价格
+       - 除权参考价：个股前收盘价调整，指数为首个价格
+       - 集合竞价价格：9:25前最后一个价格
+    2. 连续交易时段重采样（避开集合竞价时段）
+    3. 个股分红调整：读取dividend文件进行除权计算
+    4. 数据清洗：过滤非交易日、异常值处理、前向填充
+    
+    分红调整公式（仅个股）:
+    除权价 = (前收盘价 - 现金分红) / (1 + 股票分红比例 + 转增比例)
+    
+    注意事项:
+    - 个股需要dividend/{stock_code}.csv文件存在
+    - 时间戳已调整为标准交易时点
+    - 每日最后一个连续交易价格被收盘价替代以确保准确性
+    """
     df_stock = df.copy()
     # df_stock[freq] = df_stock.index.time
 
@@ -138,6 +264,6 @@ if __name__=="__main__":
     from get_data import get_data
     import os
     os.makedirs('test',exist_ok=True)
-    df_all=get_data(start=dt.datetime(2020,2,24),end=dt.datetime(2020,6,10),exg="SH",full_code="SH603392")
-    df_r=resample(df_all[0],freq="12h",is_index=False,stock_code="603392",workday_list=df_all[1],error_list=df_all[2])
+    df_all=get_data(start=dt.datetime(2024,2,24),end=dt.datetime(2024,6,10),exg="SH",full_code="SH603392")
+    df_r=resample(df_all[0],freq="5min",is_index=False,stock_code="603392",workday_list=df_all[1],error_list=df_all[2])
     df_r.to_csv(os.path.join("test","resample_test.csv"))
