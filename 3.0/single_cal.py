@@ -1,4 +1,5 @@
 # 导入必要的数据分析和可视化库
+from llvmlite.ir import Value
 import pandas as pd                       # 用于数据处理和分析
 import numpy as np                        # 用于数值计算
 import statsmodels.api as sm              # 用于统计建模（回归分析）
@@ -46,11 +47,7 @@ def deal_index_unmatching_error(full_code,df_X,df_stock,base_dir):
         df_X=df_X.loc[df_stock.index].copy()
         # df_industry=df_industry.loc[df_stock.index].copy() 
     elif df_stock.shape[0]>df_X.shape[0]:
-        log_error(f'{full_code} 数据长度不一致,stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}',full_code, base_dir=base_dir)
-        missing_set=set(df_X.index.values)-set(df_stock.index.values)
-        # if len(missing_set)<3:
-        log_error(f'缺少的index为{missing_set}',full_code, base_dir=base_dir)
-        df_X=df_X.loc[df_stock.index].copy()
+        raise ValueError(f'{full_code} 数据长度不一致,stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}')
         # df_industry=df_industry.loc[df_stock.index].copy()
     return df_X,df_stock
 
@@ -358,8 +355,8 @@ def single_periodic_cal(full_code,df_X,workday_list,params=None):
     if df_stock is None:
         return None
 
-    os.makedirs(os.path.join(base_dir, 'temp', "returns"), exist_ok=True)
-    df_stock.to_csv(os.path.join(base_dir, 'temp', "returns", f'{full_code}_returns.csv'))
+    # os.makedirs(os.path.join(base_dir, 'temp', "returns"), exist_ok=True)
+    # df_stock.to_csv(os.path.join(base_dir, 'temp', "returns", f'{full_code}_returns.csv'))
 
     workday_list=[date for date in workday_list if date>=start.date()]
     if period=="full":
