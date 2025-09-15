@@ -2,39 +2,7 @@ import pandas as pd
 import numpy as np
 import datetime as dt
 
-
-def convert_freq_to_day(str):
-    """
-    将频率字符串转换为对应的天数
-    
-    将低频率的字符串表示（如"1d", "2w"）转换为对应的交易日天数。
-    主要用于低频数据重采样时计算采样间隔。
-    
-    参数:
-    str (str): 频率字符串，支持的格式：
-               - "Nd" 表示N天，如"1d"表示1天
-               - "Nw" 表示N周，如"2w"表示2周（转换为10个交易日）
-    
-    返回:
-    int: 对应的自然日天数
-         - 对于天数格式：直接返回天数
-         - 对于周数格式：周数乘以5（按交易日计算）
-    
-    异常:
-    ValueError: 当输入的频率字符串格式不受支持时抛出
-    
-    示例:
-    >>> convert_freq_to_day("1d")
-    1
-    >>> convert_freq_to_day("2w")
-    10
-    """
-    if str.endswith("d"):
-        return int(str[:-1])
-    elif str.endswith("w"):
-        return int(str[:-1])*5
-    else:
-        raise ValueError(f"Unsupported freq: {str}")
+from utils import convert_freq_to_day,log_error
 
 
 def resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list):
@@ -74,49 +42,6 @@ def resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list):
     df_resampled.index=pd.to_datetime(df_resampled.index)
     return df_resampled
 
-
-def resample(df,freq,is_index,stock_code,workday_list,error_list):
-    """
-    股票和指数数据重采样主函数
-    
-    根据频率类型自动选择高频或低频重采样方法。处理中国股市的特殊交易时段，
-    包括早盘集合竞价、连续交易时段和收盘价，同时支持个股分红调整。
-    
-    参数:
-    df (pd.DataFrame): 需要重采样的原始数据
-                       - index: pd.DatetimeIndex，时间戳
-                       - columns: ['Price']，价格数据
-    freq (str): 重采样频率，支持以下格式：
-                - 高频："3min", "5min", "10min", "15min", "30min", "12h"
-                - 低频："1d", "2w" 等
-    is_index (bool): 是否为指数数据
-                     - True: 指数数据，无需分红调整
-                     - False: 个股数据，需要进行分红除权处理
-    stock_code (str): 股票数字代码（不含交易所前缀），用于：
-                      - 查找分红数据文件 dividend/{stock_code}.csv
-                      - 错误日志记录
-    workday_list (list): 工作日列表，包含datetime.date对象
-                         用于确定有效交易日期
-    error_list (list): 错误日期列表，包含有问题的日期
-                       这些日期的数据会被排除
-    
-    返回:
-    pd.DataFrame: 重采样后的数据，具有以下特征：
-                  - index: pd.DatetimeIndex，按指定频率的时间点
-                  - columns: ['Price']，调整后的价格数据
-                  - 对于高频数据：包含开盘价、连续交易时段价格和收盘价
-                  - 对于个股：已进行分红除权调整
-                  - 缺失数据已进行前向填充
-    
-    处理逻辑:
-    - 高频数据（min/h结尾）：调用resample_high_freq处理日内数据
-    - 低频数据（d/w结尾）：调用resample_low_freq处理日线以上数据
-    """
-
-    if freq.endswith("min") or freq.endswith("h"):
-        return resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list)
-    else:
-        return resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list)
 
 def resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list):
     """
@@ -180,7 +105,8 @@ def resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list):
     # 处理收盘价（15:00）
     # 按日取最后一个价格作为收盘价
     df_close = df_stock.resample('D').last()
-    df_close=df_close.ffill()
+    # 注释掉这一行是因为如果当天有get_data的数据，则一定当天会形成价格。
+    # df_close=df_close.ffill()
     
 
     #处理关键时间段数据first(除权后的初始数据)
@@ -211,13 +137,20 @@ def resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list):
             # print(df_first.loc[date,'Price'])
 
         df_open = df_stock[df_stock.index.time<pd.to_datetime("09:25:59").time()].resample('D').last()
-
+    
+        #对于当日集合竞价阶段没有成交的情况，补0，之后会前项填充
+        lack_open_index=df_close.index.difference(df_open.index)
+        log_error(f"stock_code:{stock_code},lack_open_index:{lack_open_index}",stock_code,base_dir="")
+        for date in lack_open_index:
+            df_open.loc[date, 'Price'] = 0
+        # df_open.loc[lack_open_index,'Price']=0
 
     df_first.index = df_first.index + dt.timedelta(hours=9) + dt.timedelta(minutes=15)
     df_open.index= df_open.index + dt.timedelta(hours=9) + dt.timedelta(minutes=25)
     df_close.index = df_close.index + dt.timedelta(hours=15)
     # 处理连续交易时段的数据
     # 按指定频率重采样，取每个时间窗口的最后一个价格
+    # print(df_open.index)
     df_continuous = df_stock.resample(freq).last()
     # print(df_continuous.index)
     df_continuous = df_continuous.ffill()
@@ -260,10 +193,60 @@ def resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list):
 
     return df_resampled
     
+
+def resample(df,freq,is_index,stock_code,workday_list,error_list):
+    """
+    股票和指数数据重采样主函数
+    
+    根据频率类型自动选择高频或低频重采样方法。处理中国股市的特殊交易时段，
+    包括早盘集合竞价、连续交易时段和收盘价，同时支持个股分红调整。
+    
+    参数:
+    df (pd.DataFrame): 需要重采样的原始数据
+                       - index: pd.DatetimeIndex，时间戳
+                       - columns: ['Price']，价格数据
+    freq (str): 重采样频率，支持以下格式：
+                - 高频："3min", "5min", "10min", "15min", "30min", "12h"
+                - 低频："1d", "2w" 等
+    is_index (bool): 是否为指数数据
+                     - True: 指数数据，无需分红调整
+                     - False: 个股数据，需要进行分红除权处理
+    stock_code (str): 股票数字代码（不含交易所前缀），用于：
+                      - 查找分红数据文件 dividend/{stock_code}.csv
+                      - 错误日志记录
+    workday_list (list): 工作日列表，包含datetime.date对象
+                         用于确定有效交易日期
+    error_list (list): 错误日期列表，包含有问题的日期
+                       这些日期的数据会被排除
+    
+    返回:
+    pd.DataFrame: 重采样后的数据，具有以下特征：
+                  - index: pd.DatetimeIndex，按指定频率的时间点
+                  - columns: ['Price']，调整后的价格数据
+                  - 对于高频数据：包含开盘价、连续交易时段价格和收盘价
+                  - 对于个股：已进行分红除权调整
+                  - 缺失数据已进行前向填充
+    
+    处理逻辑:
+    - 高频数据（min/h结尾）：调用resample_high_freq处理日内数据
+    - 低频数据（d/w结尾）：调用resample_low_freq处理日线以上数据
+    """
+
+    if freq.endswith("min") or freq.endswith("h"):
+        return resample_high_freq(df,freq,is_index,stock_code,workday_list,error_list)
+    else:
+        return resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list)
+
 if __name__=="__main__":    
     from get_data import get_data
     import os
-    os.makedirs('test',exist_ok=True)
-    df_all=get_data(start=dt.datetime(2024,2,24),end=dt.datetime(2024,6,10),exg="SH",full_code="SH603392")
-    df_r=resample(df_all[0],freq="5min",is_index=False,stock_code="603392",workday_list=df_all[1],error_list=df_all[2])
+    from get_cache import get_cache_text
+    # os.makedirs('test',exist_ok=True)
+    # df_all=get_data(start=dt.datetime(2024,2,24),end=dt.datetime(2024,6,10),exg="SH",full_code="SH603392")
+    df_all=[]
+    df_all.append(pd.read_csv("test/SZ300481.csv",parse_dates=True,index_col="Time"))
+    df_all[0].index=pd.to_datetime(df_all[0].index)
+    df_all.extend(list(get_cache_text("SZ300481",dt.datetime(2010,1,5),dt.datetime(2025,6,30))))
+    # print(df_all.index)
+    df_r=resample(df_all[0],freq="5min",is_index=False,stock_code="300481",workday_list=df_all[1],error_list=df_all[2])
     df_r.to_csv(os.path.join("test","resample_test.csv"))

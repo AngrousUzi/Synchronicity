@@ -6,10 +6,16 @@ import datetime as dt
 import numpy as np
 import os
 import warnings
-warnings.filterwarnings('default', category=RuntimeWarning)
+# warnings.filterwarnings('default', category=RuntimeWarning)
 import multiprocessing as mp
 from functools import partial
 import argparse
+
+warnings.filterwarnings('ignore', 
+                       message='invalid value encountered in scalar divide',
+                       category=RuntimeWarning, 
+                       module='statsmodels')
+warnings.filterwarnings("ignore",category=FutureWarning)
 
 def run_single_calculation(full_code, index_code, composites, df_constant, workday_list, params=None):
     """
@@ -64,24 +70,6 @@ def run_single_calculation(full_code, index_code, composites, df_constant, workd
     3. **结果为空**: 计算成功但结果为空集
     4. **文件I/O**: 中间结果保存失败（不中断主流程）
     
-    多进程考虑:
-    - 该函数不共享可变状态，适合多进程并行
-    - 所有参数通过参数传递，避免全局变量依赖
-    - 日志输出使用进程安全的文件模式
-    - 结果返回通过值而不是引用，确保线程安全
-    
-    性能优化:
-    - 中间结果缓存支持断点续传能力
-    - 分因子存储的结果便于后续分析
-    - 错误日志分股票存储，便于问题诊断
-    - 只加载必需的因子数据，节省内存
-    
-    使用场景:
-    - 大规模股票池的批量分析
-    - 高频数据的并行计算
-    - 需要断点续传的长时间任务
-    - 多因子模型的大规模验证
-    
     注意事项:
     - 确保 composites 中包含目标股票的信息
     - df_constant 必须包含所有需要的因子列
@@ -108,7 +96,7 @@ def run_single_calculation(full_code, index_code, composites, df_constant, workd
     single_result=single_periodic_cal(full_code=full_code,df_X=df_constant_needed,workday_list=workday_list,params=params)
 
     if single_result is None:
-        print(f"No data for {full_code}")
+        print(f"all_cal: {full_code} \t No return data")
         error_dir = os.path.join(base_dir, 'error')
 
         with open(os.path.join(error_dir, f'{full_code}.txt'), 'a+', encoding='utf-8') as f:
@@ -334,7 +322,7 @@ def prerequisite(index_code,params):
     composites=get_composites(index_code)
 
     
-    df_index,workday_list,_=get_complete_return(full_code="SH000300",workday_list=None,is_index=True, params=params)
+    df_index,workday_list,_=get_complete_return(full_code=index_code,workday_list=None,is_index=True, params=params)
     # print(workday_list)
     workday_list_truly_used=[date for date in workday_list if date>=start.date()]
     print(f'From {start.date()} to {end.date()} (included), there are {len(workday_list_truly_used)} workdays.')
@@ -351,6 +339,9 @@ def prerequisite(index_code,params):
     df_constant_path = os.path.join(base_dir, "df_constant.csv")
 
     df_constant.to_csv(df_constant_path)
+    workday_list_path = os.path.join(base_dir, "workday_list.txt")
+    with open(workday_list_path, "w") as f:
+        f.write(f"workday_list: {workday_list}\n")
     if df_constant.isnull().any().any():
         raise ValueError("df_constant has null values.")
         
@@ -432,50 +423,6 @@ def all_cal(index_code,df_constant,composites,workday_list,cpu_parallel_num=None
     - **内存优化**: 通过结果返回而非共享状态
     - **负载均衡**: Pool.map自动分配任务
     - **异常隔离**: 单个股票失败不影响其他计算
-    
-    性能考虑:
-    
-    - **时间复杂度**: O(N × P × T × K²)
-      * N: 成分股数量, P: 期间数量, T: 时点数量, K: 因子数量
-    - **内存需求**: 与数据范围和并行度成正比
-    - **I/O压力**: 中间文件存储可能成为瓶颈
-    - **CPU利用率**: 建议设置为 (CPU核数-1) 以保留系统资源
-    
-    错误处理策略:
-    
-    1. **参数验证失败**: 立即中止程序执行
-    2. **单股计算失败**: 记录错误但继续其他股票
-    3. **进程异常**: 自动重试或跳过问题进程
-    4. **资源不足**: 根据可用内存自动调整并行度
-    
-    限制条件和警告:
-    
-    - **Cross-section方法**: 仅支持高频数据（min/h结尾）
-    - **小期间警告**: period="1"或"2"时可能导致NaN结果
-    - **内存限制**: 特别大的数据集可能需要分批处理
-    - **磁盘空间**: 中间结果文件可能占用大量磁盘空间
-    
-    应用场景:
-    
-    - **指数增强策略**: 全涵盖成分股分析
-    - **风险因子研究**: 大规模因子暴露度分析
-    - **组合优化**: 基于系数稳定性的权重分配
-    - **市场研究**: 行业轮动和风格轮动分析
-    - **回测系统**: 大量历史数据的回测验证
-    
-    使用建议:
-    
-    1. **首次运行**: 先用少量股票和单进程模式测试
-    2. **生产环境**: 使用适当的并行度，监控内存和CPU使用情况
-    3. **结果验证**: 定期检查temp/目录下的中间结果
-    4. **错误排查**: 查看error/目录下的日志文件
-    5. **资源监控**: 长时间任务建议使用系统监控工具
-    
-    注意事项:
-    - 该函数执行时间可能较长，建议在稳定环境中运行
-    - 多进程模式下注意内存使用量可能成倍增长
-    - 结果仅返回er2汇总，详细结果需从中间文件获取
-    - 中断后可以通过中间文件实现部分断点续传
     """
     
     
