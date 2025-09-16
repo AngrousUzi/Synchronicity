@@ -417,7 +417,7 @@ def single_periodic_cal(full_code,df_X,workday_list,params=None):
 if __name__=="__main__":
     start=dt.datetime(2010,1,5)
     end=dt.datetime(2025,6,30)
-    freq="30min"
+    freq="10min"
     method="cross_section"
     period="30"
     X_cols=["index"]
@@ -428,7 +428,7 @@ if __name__=="__main__":
 
     # for period in ["full","10"]:
     # for full_code in [""]
-    full_code="SH600000"
+    full_code="SH601068"
     print(full_code)
     # results=single_periodic_cal(full_code=full_code,df_index=df_index,df_industry=df_industry,workday_list=workday_list,params=params)
     # results.to_csv(f'test_results_{period}_{method}.csv')
