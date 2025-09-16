@@ -1,5 +1,5 @@
 # 导入必要的数据分析和可视化库
-from llvmlite.ir import Value
+# from llvmlite.ir import Value
 import pandas as pd                       # 用于数据处理和分析
 import numpy as np                        # 用于数值计算
 import statsmodels.api as sm              # 用于统计建模（回归分析）
@@ -47,10 +47,18 @@ def deal_index_unmatching_error(full_code,df_X,df_stock,base_dir):
         df_X=df_X.loc[df_stock.index].copy()
         # df_industry=df_industry.loc[df_stock.index].copy() 
     elif df_stock.shape[0]>df_X.shape[0]:
-        raise ValueError(f'{full_code} 数据长度不一致,stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}')
-        # df_industry=df_industry.loc[df_stock.index].copy()
+        # raise ValueError(f'{full_code} 数据长度不一致,stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}')
+        missing_set=set(df_X.index.to_list())-set(df_stock.index.to_list())
+        missing_list=list(missing_set)
+        missing_dates=[date.date() for date in missing_list]
+        
+        df_stock=df_stock.loc[df_X.index].copy()
+        # 针对于SH000852做的特殊优化
+        if dt.datetime(2014,1,17).date() in missing_dates or dt.datetime(2014,1,20).date() in missing_dates:
+            pass
+        log_error(f'{full_code} 数据长度不一致,stock_length:{df_stock.shape[0]},index_length:{df_X.shape[0]}',full_code, base_dir=base_dir)
+        log_error(f'缺少的index为{sorted(missing_list)}',full_code, base_dir=base_dir)
     return df_X,df_stock
-
 
 def simple_cal(df_stock,df_X,full_code, base_dir: str = ""):
     """
@@ -414,7 +422,7 @@ if __name__=="__main__":
     period="30"
     X_cols=["index"]
     params={"start":start,"end":end,"freq":freq,"base_dir":"test","method":method,"period":period,"X_cols":X_cols}
-    df_index,workday_list,_=get_complete_return(full_code="SH000300",workday_list=None,is_index=True, params=params)
+    df_index,workday_list,_=get_complete_return(full_code="SH000852",workday_list=None,is_index=True, params=params)
     # print(workday_list)
     # df_industry,_,error_list=get_complete_return(full_code="SH000070",start=start,end=end,freq=freq,workday_list=workday_list,is_index=True)
 
