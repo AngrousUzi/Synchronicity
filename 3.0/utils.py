@@ -2,6 +2,19 @@ import pandas as pd
 import datetime as dt
 import os
 
+def generate_single_txt(code,base_path,workday_list):
+    csv_path=os.path.join(base_path,f"{code}.csv")
+    # if os.path.exists(csv_path):
+    df_stock=pd.read_csv(csv_path,index_col=0,parse_dates=True)
+    workday_list_stock = [d.date() for d in df_stock.index.normalize().tolist()]        
+    error_list=list(set(workday_list)-set(workday_list_stock))
+    error_list.sort()
+    txt_path=os.path.join(base_path,f"{code}.txt")
+    with open(txt_path,"w") as f:
+        f.write(f"workday_list: {workday_list}\n")
+        f.write(f"error_list: {error_list}\n")
+    print(code)
+
 def log_error(msg, full_code, base_dir: str = ""):
     """Append error message to unified log file base_dir/error/full_code.txt"""
     error_dir = os.path.join(base_dir, 'error')
@@ -102,9 +115,9 @@ def convert_freq_to_day(str):
     >>> convert_freq_to_day("2w")
     10
     """
-    if str.endswith("d"):
+    if str.endswith("d") or str.endswith('D'):
         return int(str[:-1])
-    elif str.endswith("w"):
+    elif str.endswith("w") or str.endswith('W'):
         return int(str[:-1])*5
     else:
         raise ValueError(f"Unsupported freq: {str}")

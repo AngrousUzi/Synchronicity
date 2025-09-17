@@ -724,12 +724,12 @@ if __name__=="__main__":
     
     parser.add_argument('--start', type=str, default='2010-01-05', help='Start date in YYYY-MM-DD format')
     parser.add_argument('--end', type=str, default='2025-06-30', help='End date in YYYY-MM-DD format')
-    parser.add_argument('--freq', type=str, default='12h', help='Frequency for calculation')
-    parser.add_argument('--period', type=str, default='1', help='Period for calculation')
+    parser.add_argument('--freq', type=str, default='1D', help='Frequency for calculation')
+    parser.add_argument('--period', type=str, default='30', help='Period for calculation')
     parser.add_argument('--method', type=str, default='simple', help='Method for calculation (simple or cross_section)')
     parser.add_argument('--X_cols', nargs='+', default=['index'], help='List of columns for X')
-    parser.add_argument('--index_code', type=str, default='SH000300', help='Index code')
-    parser.add_argument('--cpu_parallel_num', type=int, default=25, help='Number of CPU cores to use')
+    parser.add_argument('--index_code', type=str, default='SH000852', help='Index code')
+    parser.add_argument('--cpu_parallel_num', type=int, default=5, help='Number of CPU cores to use')
 
     args = parser.parse_args()
 

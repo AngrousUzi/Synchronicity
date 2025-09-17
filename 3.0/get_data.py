@@ -220,21 +220,6 @@ def get_low_freq_data(start:dt.datetime=None,end:dt.datetime=None,exg:str=None,f
     4. **价格列**: 必须包含'Price'列
     5. **编码格式**: 建议UTF-8编码以支持中文
     
-    使用场景:
-    
-    1. **长周期分析**: 多年历史数据的趋势分析
-    2. **策略回测**: 日级或周级策略的历史验证
-    3. **基本面分析**: 结合财务数据的价值投资分析
-    4. **宏观研究**: 经济周期和市场风格轮动研究
-    5. **组合优化**: 大量股票的长期表现对比
-    
-    性能优势:
-    
-    - **加载速度**: 单文件加载，比高频数据快数百倍
-    - **内存效率**: 数据量小，内存占用低
-    - **磁盘I/O**: 仅一次文件访问，减少磁盘压力
-    - **网络传输**: 文件小，适合远程数据库访问
-    
     处理流程:
     
     1. **文件加载**: 使用pd.read_csv()加载数据
@@ -289,10 +274,19 @@ def get_low_freq_data(start:dt.datetime=None,end:dt.datetime=None,exg:str=None,f
     )
     ```
     """
-    df=pd.read_csv(os.path.join(base_dir,f"{full_code}.csv"),index_col=0,parse_dates=True)
+    df=pd.read_csv(os.path.join("data","low_freq",f"{full_code}.csv"),index_col=0,parse_dates=True)
+    df.columns=["Price"]
     df.index=pd.to_datetime(df.index)
+    df["Price"]=pd.to_numeric(df["Price"],errors="coerce")
     df=df[['Price']]
-    error_list=list(set(workday_list)-set(df.index.date))
+    # df=df[start:end]
+    if workday_list is not None:
+        error_list=list(set(workday_list)-set(df.index.date))
+        error_list.sort()
+    else:
+        workday_list=list(set(df.index.date))
+        error_list=[]
+        workday_list.sort()
     return df,workday_list,error_list
 
 
@@ -405,7 +399,7 @@ def get_data(start:dt.datetime=None,end:dt.datetime=None,exg:str=None,full_code:
 if __name__=="__main__":
     os.makedirs('test',exist_ok=True)
 
-    df=get_data(start=dt.datetime(2024,1,1),end=dt.datetime(2024,12,31),exg="SH",full_code="SH000001")
+    df=get_low_freq_data(start=dt.datetime(2010,1,1),end=dt.datetime(2024,12,31),exg="SZ",full_code="SH000300")
     df[0].to_csv(os.path.join('test',"sample_index_1.csv"))
     workday_list=df[1]
     with open(os.path.join('test',"workday_list.txt"),'w') as t:

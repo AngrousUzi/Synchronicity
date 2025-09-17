@@ -246,13 +246,13 @@ def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False
     base_dir=params["base_dir"]
 
     error_list = []
+    if freq.endswith("min") or freq.endswith("h"):
+        # 先在start.date()_end.date()/freq/中找
+        df_return, workday_list_temp, error_list_temp = get_cache_return(full_code,workday_list,is_index, params)
+        if df_return is not None:
+            return df_return, workday_list_temp, error_list_temp
 
-    # 先在start.date()_end.date()/freq/中找
-    df_return, workday_list_temp, error_list_temp = get_cache_return(full_code,workday_list,is_index, params)
-    if df_return is not None:
-        return df_return, workday_list_temp, error_list_temp
-
-    print(f"No complete return of {full_code} found, recompute")
+        print(f"No complete return of {full_code} found, recompute")
     # 如果找不到，则重新计算
     exg=full_code[:2]
     num_code=full_code[2:]
@@ -263,7 +263,7 @@ def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False
         start_tmp=pd.Timestamp(start)-dt.timedelta(days=4)
         df_get_data=get_high_freq_data(start=start_tmp,end=end,exg=exg,full_code=full_code,workday_list=workday_list, base_dir=base_dir)
     else:
-        start_tmp=pd.Timestamp(start)-dt.timedelta(days=convert_freq_to_day(freq))
+        start_tmp=pd.Timestamp(start)-dt.timedelta(days=convert_freq_to_day(freq)+1)
         df_get_data=get_low_freq_data(start=start_tmp,end=end,exg=exg,full_code=full_code,workday_list=workday_list, base_dir=base_dir)
 
     # df_get_data=get_data(start=start_tmp,end=end,exg=exg,full_code=full_code,workday_list=workday_list, base_dir=base_dir)
@@ -271,12 +271,13 @@ def get_complete_return(full_code:str,workday_list:list=None,is_index:bool=False
     df_stock=df_get_data[0]
     workday_list=df_get_data[1]
     error_list=df_get_data[2]
-    
+
     if df_stock is None:
         return None,workday_list,error_list
     df_resample=resample(df_stock,freq=freq,is_index=is_index,stock_code=num_code,workday_list=workday_list,error_list=error_list)
-    df_return=cal_return(df_resample,full_code)
 
+    df_return=cal_return(df_resample,full_code)
+    # print(df_return)
     # 删除start_tmp到start的日期
     df_return=df_return.loc[df_return.index.date>=start.date()]
     
@@ -376,11 +377,12 @@ def index_check_overnight(df,full_code, base_dir: str = ""):
 if __name__=="__main__":
     start=dt.datetime(2019,1,24)
     end=dt.datetime(2025,6,10)
-    freq="12h"
-    params={"start":start,"end":end,"freq":freq,"base_dir":"test"}
-    df_index_return,workday_list,error_list=get_complete_return(full_code="SH000300",start=start,end=end,freq=freq,workday_list=None,is_index=True)
+    freq="4D"
+    params={"start":start,"end":end,"freq":freq,"base_dir":""}
+    df_index_return,workday_list,error_list=get_complete_return(full_code="SH000300",params=params,workday_list=None,is_index=True)
     df_index_return.to_csv("index_return_test.csv")
-    df_return,workday_list,error_list=get_complete_return(full_code="SH000300",start=start,end=end,freq=freq,workday_list=workday_list,is_index=False)
+    print(workday_list)
+    df_return,workday_list,error_list=get_complete_return(full_code="SH688800",params=params,workday_list=workday_list,is_index=False)
     # df_return.to_csv("return_test.csv")
-    print(error_list)
+    # print(error_list)
     df_return.to_csv("return_test.csv")

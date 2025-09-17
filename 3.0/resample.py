@@ -5,7 +5,7 @@ import datetime as dt
 from utils import convert_freq_to_day,log_error
 
 
-def resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list):
+def resample_low_freq(df:pd.DataFrame,freq,is_index,stock_code,workday_list,error_list):
     """
     低频数据重采样函数
     
@@ -238,15 +238,15 @@ def resample(df,freq,is_index,stock_code,workday_list,error_list):
         return resample_low_freq(df,freq,is_index,stock_code,workday_list,error_list)
 
 if __name__=="__main__":    
-    from get_data import get_data
+    from get_data import get_data,get_low_freq_data
     import os
     from get_cache import get_cache_text
     # os.makedirs('test',exist_ok=True)
-    # df_all=get_data(start=dt.datetime(2024,2,24),end=dt.datetime(2024,6,10),exg="SH",full_code="SH603392")
-    df_all=[]
-    df_all.append(pd.read_csv("test/SZ300481.csv",parse_dates=True,index_col="Time"))
-    df_all[0].index=pd.to_datetime(df_all[0].index)
-    df_all.extend(list(get_cache_text("SZ300481",dt.datetime(2010,1,5),dt.datetime(2025,6,30))))
-    # print(df_all.index)
-    df_r=resample(df_all[0],freq="5min",is_index=False,stock_code="300481",workday_list=df_all[1],error_list=df_all[2])
+    df_all=get_low_freq_data(start=dt.datetime(2010,1,5),end=dt.datetime(2025,6,30),exg="SH",full_code="SH000300")
+    # df_all=[]
+    # df_all.append(pd.read_csv("test/SZ300481.csv",parse_dates=True,index_col="Time"))
+    # df_all[0].index=pd.to_datetime(df_all[0].index)
+    # df_all.extend(list(get_cache_text("SZ300481",dt.datetime(2010,1,5),dt.datetime(2025,6,30))))
+    print(df_all)
+    df_r=resample(df_all[0],freq="4D",is_index=False,stock_code="000300",workday_list=df_all[1],error_list=df_all[2])
     df_r.to_csv(os.path.join("test","resample_test.csv"))

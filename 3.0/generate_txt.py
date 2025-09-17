@@ -4,19 +4,9 @@ import datetime as dt
 from all_cal import get_composites
 import multiprocessing as mp
 from functools import partial
+from utils import generate_single_txt
 
-def generate_single_txt(code,base_path,workday_list):
-    csv_path=os.path.join(base_path,f"{code}.csv")
-    # if os.path.exists(csv_path):
-    df_stock=pd.read_csv(csv_path,index_col=0,parse_dates=True)
-    workday_list_stock = [d.date() for d in df_stock.index.normalize().tolist()]        
-    error_list=list(set(workday_list)-set(workday_list_stock))
-    error_list.sort()
-    txt_path=os.path.join(base_path,f"{code}.txt")
-    with open(txt_path,"w") as f:
-        f.write(f"workday_list: {workday_list}\n")
-        f.write(f"error_list: {error_list}\n")
-    print(code)
+
 
 def generate_txt(code,base_path):
     code_list=get_composites(code)["full_code"].tolist()

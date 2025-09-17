@@ -147,8 +147,12 @@ def simple_cal(df_stock,df_X,full_code, base_dir: str = ""):
     X=sm.add_constant(X)
 
     # print(Y,X)
-
-    model=sm.OLS(Y,X)
+    try:
+        model=sm.OLS(Y,X)
+    except ValueError as e:
+        print(f"{full_code}: {e}")
+        print({set(df_stock.index.date())-set(df_X.index.date())})
+        raise ValueError(f"{full_code}: {e}")
     results=model.fit()
     r2=results.rsquared
     params=results.params
